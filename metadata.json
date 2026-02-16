@@ -1,0 +1,7 @@
+{
+  "name": "PróximoBus",
+  "description": "Plataforma PWA para la gestión y consulta de horarios de autobuses interurbanos en tiempo real con seguimiento activo y panel de administración.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
