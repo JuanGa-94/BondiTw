@@ -1,0 +1,98 @@
+{
+    "design_system": {
+        "identity": {
+            "name": "PróximoBus",
+            "style_direction": "Mobile-First / Material-Glassmorphism",
+            "vibe": "Profesional, Confiable, Eco-friendly, Moderno"
+        },
+        "color_palette": {
+            "brand": {
+                "primary": "#2f7f33",
+                "primary_hover": "#266629",
+                "primary_soft": "rgba(47, 127, 51, 0.1)"
+            },
+            "background": {
+                "light": "#f6f8f6",
+                "dark": "#141e15",
+                "surface_variant": "#e1e5df"
+            },
+            "alerts": {
+                "special_service": {
+                    "background": "#fffbeb",
+                    "text": "#d97706",
+                    "border": "#f59e0b"
+                },
+                "announcements": {
+                    "background": "#fef9c3",
+                    "border": "#fde047",
+                    "text": "#854d0e"
+                }
+            },
+            "ui": {
+                "slate": {
+                    "light": "text-slate-900",
+                    "dark": "text-slate-100",
+                    "muted": "text-slate-400"
+                },
+                "border": {
+                    "light": "border-slate-100",
+                    "dark": "border-slate-800"
+                }
+            }
+        },
+        "typography": {
+            "main_font": "Inter, sans-serif",
+            "scales": {
+                "h1": "text-4xl (36px), font-black (900), tracking-tight",
+                "h2": "text-3xl (30px), font-black (900)",
+                "h3": "text-xl (20px), font-black (900)",
+                "body": "text-sm (14px), font-medium (500)",
+                "label": "text-[10px], font-black (900), uppercase, tracking-widest"
+            }
+        },
+        "visual_elements": {
+            "border_radius": {
+                "standard": "1rem (lg)",
+                "card": "1.5rem (xl)",
+                "container": "1.875rem (3xl)",
+                "button": "1rem"
+            },
+            "shadows": {
+                "card": "shadow-xl (0 20px 25px -5px rgb(0 0 0 / 0.1))",
+                "button": "shadow-lg shadow-primary/20",
+                "header": "backdrop-blur-md bg-white/80"
+            },
+            "icons": {
+                "provider": "Material Symbols Outlined",
+                "variation_settings": "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24"
+            }
+        },
+        "components_spec": {
+            "cards": {
+                "style": "Glassmorphism light, Bordered dark",
+                "interaction": "Hover: scale-105/shadow-xl, Active: scale-95"
+            },
+            "countdown_timer": {
+                "numbers": "text-7xl, font-black, tracking-tighter",
+                "progress_bar": "h-3, full-rounded, transition-all duration-1000"
+            },
+            "navigation": {
+                "sidebar": "Fixed 64px, Glassmorphism backdrop",
+                "bottom_nav": "Fixed bottom, Blur backdrop, indicator via Fill Icon"
+            },
+            "forms": {
+                "inputs": "bg-slate-50, rounded-xl, border-none, focus:ring-2 ring-primary",
+                "dropdowns": "appearance-none, relative with material expand_more icon",
+                "checkboxes": "size-5, text-primary, focus:ring-primary"
+            }
+        },
+        "animations": {
+            "transitions": {
+                "duration": "300ms",
+                "timing": "ease-in-out"
+            },
+            "view_entrance": "animate-in fade-in slide-in-from-bottom-4 duration-500",
+            "modal_entrance": "backdrop-blur-sm with slide-in-from-bottom-full (mobile)"
+        }
+    }
+}
