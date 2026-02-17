@@ -16,6 +16,14 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState({ origin: '', destination: '' });
   const [isLoginView, setIsLoginView] = useState(true);
   
+  // Theme state
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
+    }
+    return 'light';
+  });
+
   // Admin form specific states
   const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
   const [showLineField, setShowLineField] = useState(true);
@@ -23,6 +31,23 @@ const App: React.FC = () => {
 
   // Modal state
   const [pendingRoute, setPendingRoute] = useState<Route | null>(null);
+
+  // Theme effect
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    } else {
+      root.classList.add('light');
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
 
   // Load Data
   const loadData = useCallback(async () => {
@@ -152,6 +177,14 @@ const App: React.FC = () => {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background-light dark:bg-background-dark bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background-light to-background-light dark:via-background-dark dark:to-background-dark">
+        {/* Floating theme toggle for login view */}
+        <button 
+          onClick={toggleTheme}
+          className="fixed top-6 right-6 size-12 rounded-full bg-white dark:bg-slate-800 shadow-xl flex items-center justify-center text-primary transition-all hover:scale-110 active:scale-95"
+        >
+          <span className="material-symbols-outlined">{theme === 'light' ? 'dark_mode' : 'light_mode'}</span>
+        </button>
+
         <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800 p-8 md:p-10">
           <div className="flex flex-col items-center mb-10">
             <div className="bg-primary p-4 rounded-2xl text-white mb-6 shadow-xl shadow-primary/30">
@@ -178,7 +211,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <Layout user={user} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout}>
+    <Layout user={user} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} theme={theme} onToggleTheme={toggleTheme}>
       {pendingRoute && (
         <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center p-0 md:p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-t-3xl md:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-full md:slide-in-from-bottom-4 duration-500">
@@ -277,7 +310,7 @@ const App: React.FC = () => {
           ) : (
             <div className="space-y-10">
               <section className="space-y-2"><h1 className="text-4xl font-black tracking-tight dark:text-white">Planifica tu viaje</h1><p className="text-slate-500 text-lg font-medium">Consulta horarios y rutas interurbanas en tiempo real.</p></section>
-              <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-xl border border-slate-100 dark:border-slate-800">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-xl border border-slate-100 dark:border-slate-800 transition-colors">
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-end gap-6">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">Origen</label>
@@ -339,7 +372,7 @@ const App: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-8">
-              <div className="flex items-center justify-between bg-primary/5 dark:bg-primary/10 p-6 rounded-3xl border border-primary/10"><div className="flex items-center gap-4"><div className="size-12 rounded-2xl bg-primary text-white flex items-center justify-center"><span className="material-symbols-outlined">directions_bus</span></div><div><p className="text-[10px] font-black uppercase tracking-widest text-primary">Ruta seleccionada</p><h4 className="font-black dark:text-white text-lg leading-none">{searchQuery.origin} <span className="text-primary mx-1">→</span> {searchQuery.destination}</h4></div></div><button onClick={() => setSearchQuery({ origin: '', destination: '' })} className="px-5 py-2.5 bg-white dark:bg-slate-800 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"><span className="material-symbols-outlined text-sm">edit</span> NUEVA BÚSQUEDA</button></div>
+              <div className="flex items-center justify-between bg-primary/5 dark:bg-primary/10 p-6 rounded-3xl border border-primary/10 transition-colors"><div className="flex items-center gap-4"><div className="size-12 rounded-2xl bg-primary text-white flex items-center justify-center"><span className="material-symbols-outlined">directions_bus</span></div><div><p className="text-[10px] font-black uppercase tracking-widest text-primary">Ruta seleccionada</p><h4 className="font-black dark:text-white text-lg leading-none">{searchQuery.origin} <span className="text-primary mx-1">→</span> {searchQuery.destination}</h4></div></div><button onClick={() => setSearchQuery({ origin: '', destination: '' })} className="px-5 py-2.5 bg-white dark:bg-slate-800 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"><span className="material-symbols-outlined text-sm">edit</span> NUEVA BÚSQUEDA</button></div>
               <div className="grid grid-cols-1 gap-4">
                 {filteredRoutes.length > 0 ? filteredRoutes.map(route => (
                   <div key={route.id} className={`group bg-white dark:bg-slate-900 p-6 rounded-3xl border ${route.is_special ? 'border-primary shadow-lg shadow-primary/5' : 'border-slate-100 dark:border-slate-800'} flex flex-col md:flex-row items-center justify-between gap-6 hover:shadow-xl transition-all cursor-pointer`} onClick={() => handleOpenRouteDetails(route)}>
@@ -407,7 +440,7 @@ const App: React.FC = () => {
             </form>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden transition-colors">
              <div className="p-8 border-b border-slate-50 dark:border-slate-800"><h3 className="text-xl font-black dark:text-white">Rutas Activas</h3></div>
              <div className="overflow-x-auto">
                <table className="w-full text-left">
