@@ -60,6 +60,14 @@ class SupabaseService {
     return data;
   }
 
+  async updateRoute(id: string, data: Partial<Route>) {
+    const { error } = await supabaseClient
+      .from('routes')
+      .update(data)
+      .eq('id', id);
+    if (error) throw error;
+  }
+
   async addSchedule(schedule: Omit<Schedule, 'id'>) {
     const { data, error } = await supabaseClient
       .from('schedules')
@@ -94,6 +102,14 @@ class SupabaseService {
       .single();
     if (error) throw error;
     return data;
+  }
+
+  async updateAd(id: string, data: Partial<Ad>) {
+    const { error } = await supabaseClient
+      .from('ads')
+      .update(data)
+      .eq('id', id);
+    if (error) throw error;
   }
 
   async deleteAd(id: string) {
@@ -132,6 +148,14 @@ class SupabaseService {
     return data;
   }
 
+  async updateDonationMethod(id: string, data: Partial<DonationMethod>) {
+    const { error } = await supabaseClient
+      .from('donation_methods')
+      .update(data)
+      .eq('id', id);
+    if (error) throw error;
+  }
+
   async deleteDonationMethod(id: string) {
     const { error } = await supabaseClient
       .from('donation_methods')
@@ -164,6 +188,14 @@ class SupabaseService {
       .single();
     if (error) throw error;
     return data;
+  }
+
+  async deleteCompany(id: string) {
+    const { error } = await supabaseClient
+      .from('companies')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   }
 
   async getPaymentMethods(): Promise<PaymentMethod[]> {
@@ -249,20 +281,28 @@ class SupabaseService {
     return null;
   }
 
-  async login(isAdmin: boolean) {
-    // For demo purposes, we'll try to sign in with a fixed account
-    // or provide a message that real login is needed.
-    // In a real app, we'd use supabaseClient.auth.signInWithPassword(...)
-    console.warn('Real Auth requires user interaction. Use supabaseClient.auth directly.');
-    return null;
+  async loginWithPassword(email: string, password: string): Promise<User | null> {
+    const { data: { user }, error } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) throw error;
+    if (!user) return null;
+
+    return this.getCurrentUser();
   }
 
-  async register(email: string) {
-    // This would typically involve sending an OTP or password registration
-    const { data, error } = await supabaseClient.auth.signInWithOtp({ email });
+  async registerWithPassword(email: string, password: string): Promise<User | null> {
+    const { data: { user }, error } = await supabaseClient.auth.signUp({
+      email,
+      password,
+    });
     if (error) throw error;
-    alert('Check your email for the login link!');
-    return null;
+    if (!user) return null;
+
+    // The profile will be created by the database trigger if configured, 
+    // or we might need to handle it in App.tsx after session confirm.
+    return this.getCurrentUser();
   }
 
   async logout() {

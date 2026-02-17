@@ -27,8 +27,9 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState({ origin: '', destination: '' });
 
   // Auth view state
-  const [authView, setAuthView] = useState<'landing' | 'register'>('landing');
-  const [regEmail, setRegEmail] = useState('');
+  const [authView, setAuthView] = useState<'landing' | 'login' | 'register'>('landing');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
 
   // View states
   const [selectedAd, setSelectedAd] = useState<Ad | null>(null);
@@ -50,10 +51,15 @@ const App: React.FC = () => {
   const [adminStep, setAdminStep] = useState<1 | 2>(1);
   const [newRouteData, setNewRouteData] = useState<Omit<Route, 'id'> | null>(null);
   const [newSchedules, setNewSchedules] = useState<Omit<Schedule, 'id' | 'route_id'>[]>([]);
-  const [tempSchedule, setTempSchedule] = useState({ dep: '', arr: '', days: ['1', '2', '3', '4', '5'] as string[] });
+  const [tempSchedule, setTempSchedule] = useState({ dep: '', arr: '', days: [] as string[] });
 
   // Modal for details
   const [pendingSchedule, setPendingSchedule] = useState<ExtendedSchedule | null>(null);
+
+  // States for Editing/Adding (Advertisements, Donations, Routes)
+  const [editingAd, setEditingAd] = useState<Ad | null>(null);
+  const [editingDonation, setEditingDonation] = useState<DonationMethod | null>(null);
+  const [editingRoute, setEditingRoute] = useState<Route | null>(null);
 
   // Currency Formatter
   const formatCurrency = useCallback((amount: number) => {
@@ -194,22 +200,22 @@ const App: React.FC = () => {
     return ads.filter(ad => ad.active && new Date(ad.start_date) <= now && new Date(ad.end_date) >= now);
   }, [ads]);
 
-  const handleLogin = async (isAdmin: boolean) => {
-    // For demo, we still show the buttons but they will prompt for real email if they want to 'log in'
-    // or we can just redirect to the register view.
-    setAuthView('register');
-  };
-
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regEmail) return;
+    if (!authEmail || !authPassword) return;
+
     try {
-      await supabase.register(regEmail);
-      alert('Se ha enviado un enlace de acceso a tu correo. Por favor, revísalo para continuar.');
+      if (authView === 'login') {
+        const u = await supabase.loginWithPassword(authEmail, authPassword);
+        if (u) setUser(u);
+      } else {
+        await supabase.registerWithPassword(authEmail, authPassword);
+        alert('Confirma tu correo para completar el registro.');
+        setAuthView('login');
+      }
     } catch (err: any) {
       alert('Error: ' + err.message);
     }
-    setRegEmail('');
   };
 
   const handleLogout = async () => {
@@ -220,6 +226,8 @@ const App: React.FC = () => {
     setActiveTab('home');
     setSearchQuery({ origin: '', destination: '' });
     setAuthView('landing');
+    setAuthEmail('');
+    setAuthPassword('');
   };
 
   const handleConfirmSelection = async () => {
@@ -269,7 +277,7 @@ const App: React.FC = () => {
       arrival_time: tempSchedule.arr,
       operating_days: tempSchedule.days
     }]);
-    setTempSchedule({ dep: '', arr: '', days: ['1', '2', '3', '4', '5'] });
+    setTempSchedule({ dep: '', arr: '', days: [] });
   };
 
   const finalizeRoute = async () => {
@@ -323,6 +331,16 @@ const App: React.FC = () => {
     e.currentTarget.reset();
   };
 
+  const handleAddCompanyAdmin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const name = fd.get('name') as string;
+    if (!name) return;
+    await supabase.addCompany(name);
+    loadData();
+    e.currentTarget.reset();
+  };
+
   const handleAddPaymentMethodAdmin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -331,6 +349,12 @@ const App: React.FC = () => {
     await supabase.addPaymentMethod(name);
     loadData();
     e.currentTarget.reset();
+  };
+
+  const handleUpdateRoute = async (id: string, data: Partial<Route>) => {
+    await supabase.updateRoute(id, data);
+    setEditingRoute(null);
+    loadData();
   };
 
   const handleUpdateSchedule = async (id: string, data: Partial<Schedule>) => {
@@ -346,11 +370,41 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePresetDays = (type: 'lv' | 'fs' | 'all') => {
-    if (type === 'lv') setTempSchedule({ ...tempSchedule, days: ['1', '2', '3', '4', '5'] });
-    if (type === 'fs') setTempSchedule({ ...tempSchedule, days: ['0', '6'] });
-    if (type === 'all') setTempSchedule({ ...tempSchedule, days: ['0', '1', '2', '3', '4', '5', '6', 'H'] });
+  const handlePresetDays = (type: 'lv' | 'fs' | 'all', setter: (days: string[]) => void) => {
+    if (type === 'lv') setter(['1', '2', '3', '4', '5']);
+    if (type === 'fs') setter(['0', '6']);
+    if (type === 'all') setter(['0', '1', '2', '3', '4', '5', '6', 'H']);
   };
+
+  const DayPicker = ({ selectedDays, onChange }: { selectedDays: string[], onChange: (days: string[]) => void }) => (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        {ALL_DAYS_CODES.map(day => (
+          <button
+            key={day}
+            type="button"
+            onClick={() => {
+              const newDays = selectedDays.includes(day)
+                ? selectedDays.filter(d => d !== day)
+                : [...selectedDays, day];
+              onChange(newDays);
+            }}
+            className={`px-3 py-2 rounded-xl text-[10px] font-black transition-all border ${selectedDays.includes(day)
+              ? 'bg-primary border-primary text-white'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 hover:border-primary'
+              }`}
+          >
+            {day === 'H' ? 'FER' : DAY_NAMES[parseInt(day)]}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button type="button" onClick={() => handlePresetDays('lv', onChange)} className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-[10px] font-black hover:bg-slate-200 transition-all">LUN A VIE</button>
+        <button type="button" onClick={() => handlePresetDays('fs', onChange)} className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-[10px] font-black hover:bg-slate-200 transition-all">FIN DE SEM</button>
+        <button type="button" onClick={() => handlePresetDays('all', onChange)} className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-[10px] font-black hover:bg-slate-200 transition-all">TODOS</button>
+      </div>
+    </div>
+  );
 
   if (selectedAd && user) {
     return (
@@ -405,25 +459,40 @@ const App: React.FC = () => {
           </div>
 
           {authView === 'landing' ? (
-            <div className="space-y-4">
-              <p className="text-center text-sm text-slate-500 mb-4">Usa tu correo para acceder de forma segura mediante un enlace mágico.</p>
-              <button onClick={() => setAuthView('register')} className="w-full py-4 bg-primary text-white font-bold rounded-2xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">Iniciar Sesión / Registrarse</button>
+            <div className="flex flex-col gap-3">
+              <button onClick={() => setAuthView('login')} className="w-full py-4 bg-primary text-white font-bold rounded-2xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">Iniciar Sesión</button>
+              <button onClick={() => setAuthView('register')} className="w-full py-4 bg-white dark:bg-slate-800 dark:text-white border border-slate-200 dark:border-slate-700 font-bold rounded-2xl hover:bg-slate-50 transition-all">Crear Cuenta</button>
             </div>
           ) : (
-            <form onSubmit={handleRegister} className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Correo Electrónico</label>
-                <input
-                  type="email"
-                  value={regEmail}
-                  onChange={(e) => setRegEmail(e.target.value)}
-                  required
-                  placeholder="ejemplo@email.com"
-                  className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-primary transition-all dark:text-white font-bold transition-colors"
-                />
+            <form onSubmit={handleAuth} className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Correo Electrónico</label>
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    required
+                    placeholder="ejemplo@email.com"
+                    className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-primary transition-all dark:text-white font-bold transition-colors"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Contraseña</label>
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    required
+                    placeholder="••••••••"
+                    className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-primary transition-all dark:text-white font-bold transition-colors"
+                  />
+                </div>
               </div>
               <div className="flex flex-col gap-3">
-                <button type="submit" className="w-full py-4 bg-primary text-white font-black rounded-2xl shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all">CREAR CUENTA</button>
+                <button type="submit" className="w-full py-4 bg-primary text-white font-black rounded-2xl shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
+                  {authView === 'login' ? 'INICIAR SESIÓN' : 'REGISTRARSE'}
+                </button>
                 <button type="button" onClick={() => setAuthView('landing')} className="w-full py-2 text-slate-400 font-bold text-sm hover:text-slate-600 transition-colors">Volver</button>
               </div>
             </form>
@@ -872,13 +941,15 @@ const App: React.FC = () => {
                       <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1 transition-colors">Hora Llegada</label>
                       <input type="time" value={tempSchedule.arr} onChange={e => setTempSchedule({ ...tempSchedule, arr: e.target.value })} className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all transition-colors" />
                     </div>
-                    <div className="lg:col-span-2 flex items-center gap-2 h-[52px]">
-                      <button type="button" onClick={() => handlePresetDays('lv')} className="flex-1 h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-black hover:border-primary transition-all transition-colors">LUN A VIE</button>
-                      <button type="button" onClick={() => handlePresetDays('fs')} className="flex-1 h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-black hover:border-primary transition-all transition-colors">FIN DE SEM</button>
+                    <div className="lg:col-span-2 space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">Días de Operación</label>
+                      <DayPicker selectedDays={tempSchedule.days} onChange={(days) => setTempSchedule({ ...tempSchedule, days })} />
+                    </div>
+                    <div className="lg:col-span-2 flex items-center justify-end h-[52px]">
                       <button
                         type="button"
                         onClick={addScheduleToDraft}
-                        className="flex-[2] h-full bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/10"
+                        className="w-full lg:w-auto px-8 h-full bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/10"
                       >
                         <span className="material-symbols-outlined text-xl">add_box</span>
                         AÑADIR HORA
@@ -927,6 +998,12 @@ const App: React.FC = () => {
                           </td>
                           <td className="px-10 py-6 text-right">
                             <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => setEditingRoute(r)}
+                                className="size-10 rounded-full text-slate-300 hover:text-primary hover:bg-primary/10 transition-all inline-flex items-center justify-center"
+                              >
+                                <span className="material-symbols-outlined">edit</span>
+                              </button>
                               <button
                                 onClick={() => setEditingRouteId(isExpanded ? null : r.id)}
                                 className={`size-10 rounded-full flex items-center justify-center transition-all ${isExpanded ? 'bg-primary text-white' : 'text-slate-300 hover:text-primary hover:bg-primary/10'}`}
@@ -1007,66 +1084,308 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* 5. Ad Management */}
+          {/* 5. Company Management */}
+          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden p-10 space-y-8 transition-colors">
+            <div className="flex items-center justify-between">
+              <h3 className="text-2xl font-black dark:text-white transition-colors">Gestión de Empresas Operadoras</h3>
+              <span className="material-symbols-outlined text-primary text-3xl">corporate_fare</span>
+            </div>
+
+            <form onSubmit={handleAddCompanyAdmin} className="space-y-4 bg-slate-50 dark:bg-slate-800/30 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 transition-colors">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1 transition-colors">Nombre de la Empresa</label>
+                <input name="name" required placeholder="Ej: ALSA Interurbanos" className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all transition-colors" />
+              </div>
+              <div className="flex justify-end">
+                <button type="submit" className="px-10 py-4 bg-primary text-white font-black rounded-xl shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all">AÑADIR EMPRESA</button>
+              </div>
+            </form>
+
+            <div className="flex flex-wrap gap-2">
+              {companies.map(c => (
+                <div key={c.id} className="flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 transition-colors">
+                  <span className="text-sm font-bold dark:text-white transition-colors">{c.name}</span>
+                  <button onClick={() => { if (confirm('¿Eliminar empresa?')) supabase.deleteCompany(c.id).then(loadData); }} className="size-6 rounded-full text-slate-300 hover:text-red-500 transition-all transition-colors"><span className="material-symbols-outlined text-sm">close</span></button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 6. Ad Management */}
           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden p-10 space-y-8 transition-colors">
             <div className="flex items-center justify-between">
               <h3 className="text-2xl font-black dark:text-white transition-colors">Gestión de Publicidad</h3>
               <span className="material-symbols-outlined text-primary text-3xl">campaign</span>
             </div>
 
-            <form onSubmit={handleAddAd} className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 dark:bg-slate-800/30 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 transition-colors">
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                const data = {
+                  title: fd.get('title') as string,
+                  description: fd.get('description') as string,
+                  image_url: fd.get('image_url') as string,
+                  external_url: fd.get('external_url') as string,
+                  start_date: fd.get('start_date') as string,
+                  end_date: fd.get('end_date') as string,
+                  active: true
+                };
+                if (editingAd) {
+                  await supabase.updateAd(editingAd.id, data);
+                  setEditingAd(null);
+                } else {
+                  await supabase.addAd(data);
+                }
+                loadData();
+                e.currentTarget.reset();
+              }}
+              key={editingAd?.id || 'new-ad'}
+              className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 dark:bg-slate-800/30 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 transition-colors"
+            >
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1 transition-colors">Título de la Campaña</label>
-                <input name="title" required placeholder="Ej: Oferta Café Estación" className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all transition-colors" />
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Título de la Campaña</label>
+                <input name="title" required defaultValue={editingAd?.title} placeholder="Ej: Oferta Café Estación" className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all" />
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Descripción</label>
+                <textarea name="description" required defaultValue={editingAd?.description} placeholder="Detalles de la promoción..." className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all min-h-[100px]" />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1 transition-colors">URL de la Imagen</label>
-                <input name="image_url" required placeholder="https://..." className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all transition-colors" />
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">URL de la Imagen</label>
+                <input name="image_url" required defaultValue={editingAd?.image_url} placeholder="https://..." className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all" />
               </div>
-              <div className="md:col-span-2 flex justify-end">
-                <button type="submit" className="px-10 py-4 bg-primary text-white font-black rounded-xl shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all">PUBLICAR CAMPAÑA</button>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Link Externo</label>
+                <input name="external_url" required defaultValue={editingAd?.external_url} placeholder="https://..." className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1 transition-colors">Fecha Inicio</label>
+                <input name="start_date" type="date" required defaultValue={editingAd?.start_date?.split('T')[0]} className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1 transition-colors">Fecha Fin</label>
+                <input name="end_date" type="date" required defaultValue={editingAd?.end_date?.split('T')[0]} className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all" />
+              </div>
+              <div className="md:col-span-2 flex justify-end gap-3">
+                {editingAd && <button type="button" onClick={() => setEditingAd(null)} className="px-6 py-4 font-bold text-slate-400">CANCELAR</button>}
+                <button type="submit" className="px-10 py-4 bg-primary text-white font-black rounded-xl shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
+                  {editingAd ? 'GUARDAR CAMBIOS' : 'PUBLICAR CAMPAÑA'}
+                </button>
               </div>
             </form>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {ads.map(ad => (
+                <div key={ad.id} className="p-5 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between group">
+                  <div className="flex items-center gap-4">
+                    <img src={ad.image_url} className="size-12 rounded-lg object-cover" alt="" />
+                    <div>
+                      <p className="font-bold dark:text-white text-sm">{ad.title}</p>
+                      <p className="text-[10px] text-slate-400 uppercase font-black">{ad.active ? 'Activa' : 'Inactiva'}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => setEditingAd(ad)} className="p-2 text-slate-300 hover:text-primary transition-colors"><span className="material-symbols-outlined text-sm">edit</span></button>
+                    <button onClick={() => { if (confirm('¿Eliminar anuncio?')) supabase.deleteAd(ad.id).then(loadData); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><span className="material-symbols-outlined text-sm">delete</span></button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* 6. Donation Methods Config */}
+          {/* 7. Donation Methods Config */}
           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden p-10 space-y-8 transition-colors">
             <div className="flex items-center justify-between">
               <h3 className="text-2xl font-black dark:text-white transition-colors">Formas de Colaboración</h3>
               <span className="material-symbols-outlined text-primary text-3xl">volunteer_activism</span>
             </div>
-            <form onSubmit={handleAddDonationMethod} className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 dark:bg-slate-800/30 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 transition-colors">
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                const data = {
+                  name: fd.get('name') as string,
+                  url: fd.get('url') as string,
+                  icon: fd.get('icon') as string,
+                  description: fd.get('description') as string
+                };
+                if (editingDonation) {
+                  await supabase.updateDonationMethod(editingDonation.id, data);
+                  setEditingDonation(null);
+                } else {
+                  await supabase.addDonationMethod(data);
+                }
+                loadData();
+                e.currentTarget.reset();
+              }}
+              key={editingDonation?.id || 'new-donation'}
+              className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 dark:bg-slate-800/30 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 transition-colors"
+            >
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1 transition-colors">Nombre del Método</label>
-                <input name="name" required placeholder="Ej: PayPal" className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all transition-colors" />
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Nombre del Método</label>
+                <input name="name" required defaultValue={editingDonation?.name} placeholder="Ej: PayPal" className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all" />
               </div>
-              <div className="md:col-span-2 flex justify-end">
-                <button type="submit" className="px-10 py-4 bg-primary text-white font-black rounded-xl shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all">AÑADIR MÉTODO</button>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Icono Material</label>
+                <input name="icon" required defaultValue={editingDonation?.icon} placeholder="Ej: volunteer_activism" className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all" />
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">URL de destino</label>
+                <input name="url" required defaultValue={editingDonation?.url} placeholder="https://..." className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all" />
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Breve descripción</label>
+                <input name="description" required defaultValue={editingDonation?.description} placeholder="Para qué se usará el aporte..." className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all" />
+              </div>
+              <div className="md:col-span-2 flex justify-end gap-3">
+                {editingDonation && <button type="button" onClick={() => setEditingDonation(null)} className="px-6 py-4 font-bold text-slate-400">CANCELAR</button>}
+                <button type="submit" className="px-10 py-4 bg-primary text-white font-black rounded-xl shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
+                  {editingDonation ? 'GUARDAR CAMBIOS' : 'AÑADIR MÉTODO'}
+                </button>
+              </div>
+            </form>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {donationMethods.map(method => (
+                <div key={method.id} className="p-5 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between group">
+                  <div className="flex items-center gap-4">
+                    <span className="material-symbols-outlined text-primary">{method.icon}</span>
+                    <p className="font-bold dark:text-white text-sm">{method.name}</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => setEditingDonation(method)} className="p-2 text-slate-300 hover:text-primary transition-colors"><span className="material-symbols-outlined text-sm">edit</span></button>
+                    <button onClick={() => { if (confirm('¿Eliminar método?')) supabase.deleteDonationMethod(method.id).then(loadData); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><span className="material-symbols-outlined text-sm">delete</span></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingRoute && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl p-10 space-y-10 animate-in zoom-in duration-300 transition-colors">
+            <div>
+              <h3 className="text-2xl font-black dark:text-white transition-colors">Editar Ruta</h3>
+              <p className="text-xs text-slate-400 font-medium">Modifica los detalles principales de la ruta.</p>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                handleUpdateRoute(editingRoute.id, {
+                  origin: fd.get('origin') as string,
+                  destination: fd.get('destination') as string,
+                  company: fd.get('company') as string,
+                  route_name: fd.get('route_name') as string,
+                  price: parseFloat(fd.get('price') as string),
+                  payment_methods: fd.getAll('payments') as string[]
+                });
+              }}
+              className="space-y-10"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Empresa</label>
+                  <select name="company" defaultValue={editingRoute.company} required className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-primary transition-all dark:text-white appearance-none cursor-pointer">
+                    {companies.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Nombre Servicio</label>
+                  <input name="route_name" defaultValue={editingRoute.route_name} required className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-primary transition-all dark:text-white" />
+                </div>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Origen</label>
+                  <input name="origin" defaultValue={editingRoute.origin} required className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-primary transition-all dark:text-white" />
+                </div>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Destino</label>
+                  <input name="destination" defaultValue={editingRoute.destination} required className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-primary transition-all dark:text-white" />
+                </div>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Precio ($)</label>
+                  <input name="price" type="number" step="0.01" defaultValue={editingRoute.price} required className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-primary transition-all dark:text-white" />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Pagos Autorizados</label>
+                <div className="flex flex-wrap gap-4">
+                  {paymentMethods.map(pm => (
+                    <label key={pm.id} className="flex items-center gap-3 cursor-pointer bg-slate-50 dark:bg-slate-800 px-6 py-4 rounded-2xl hover:bg-slate-100 transition-all border border-transparent hover:border-primary/20">
+                      <input type="checkbox" name="payments" value={pm.name} defaultChecked={editingRoute.payment_methods.includes(pm.name)} className="size-5 rounded text-primary focus:ring-primary" />
+                      <span className="text-sm font-bold dark:text-white">{pm.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-6">
+                <button type="button" onClick={() => setEditingRoute(null)} className="flex-1 py-5 font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-all">Cancelar</button>
+                <button type="submit" className="flex-[2] py-5 bg-primary text-white font-black rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all">GUARDAR CAMBIOS EN RUTA</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Edit Schedule Modal */}
       {editingSchedule && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl p-8 space-y-8 animate-in zoom-in duration-300 transition-colors">
-            <h3 className="text-2xl font-black dark:text-white transition-colors">{editingSchedule.id ? 'Editar Frecuencia' : 'Nueva Frecuencia'}</h3>
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl p-10 space-y-8 animate-in zoom-in duration-300 transition-colors">
+            <div>
+              <h3 className="text-2xl font-black dark:text-white transition-colors">
+                {editingSchedule.id ? 'Editar Frecuencia' : 'Nueva Frecuencia'}
+              </h3>
+              <p className="text-xs text-slate-400 font-medium">Configura el horario y los días de operación.</p>
+            </div>
+
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1 transition-colors">Hora Salida</label>
-                <input type="time" value={editingSchedule.departure_time} onChange={e => setEditingSchedule({ ...editingSchedule, departure_time: e.target.value })} className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 dark:text-white border-none focus:ring-2 focus:ring-primary transition-all transition-colors" />
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Hora Salida</label>
+                <input
+                  type="time"
+                  value={editingSchedule.departure_time}
+                  onChange={(e) => setEditingSchedule({ ...editingSchedule, departure_time: e.target.value })}
+                  className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 dark:text-white border-none focus:ring-2 focus:ring-primary transition-all"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Hora Arribo</label>
+                <input
+                  type="time"
+                  value={editingSchedule.arrival_time}
+                  onChange={(e) => setEditingSchedule({ ...editingSchedule, arrival_time: e.target.value })}
+                  className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 dark:text-white border-none focus:ring-2 focus:ring-primary transition-all"
+                />
               </div>
             </div>
-            <div className="flex gap-4">
-              <button onClick={() => setEditingSchedule(null)} className="flex-1 py-4 font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-all transition-colors">Cancelar</button>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Días de Operación</label>
+              <DayPicker
+                selectedDays={editingSchedule.operating_days}
+                onChange={(days) => setEditingSchedule({ ...editingSchedule, operating_days: days })}
+              />
+            </div>
+
+            <div className="flex gap-4 pt-4">
               <button
-                onClick={() => {
+                onClick={() => setEditingSchedule(null)}
+                className="flex-1 py-4 font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
                   if (editingSchedule.id) {
-                    handleUpdateSchedule(editingSchedule.id, editingSchedule);
+                    await handleUpdateSchedule(editingSchedule.id, editingSchedule);
                   } else {
-                    supabase.addSchedule(editingSchedule).then(loadData);
+                    await supabase.addSchedule(editingSchedule);
+                    loadData();
                     setEditingSchedule(null);
                   }
                 }}
@@ -1078,7 +1397,8 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-    </Layout>
+
+    </Layout >
   );
 };
 
