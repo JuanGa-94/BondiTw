@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { supabase } from './services/supabase';
+import { supabase, supabaseClient } from './services/supabase';
 import { User, Route, Schedule, Announcement, UserRole, Company, PaymentMethod, Ad, DonationMethod, NewsItem } from './types';
 import Layout from './components/Layout';
 import CountdownTimer from './components/CountdownTimer';
@@ -23,9 +23,9 @@ const App: React.FC = () => {
   const [donationMethods, setDonationMethods] = useState<DonationMethod[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [activeSelection, setActiveSelection] = useState<{route: Route, schedule: Schedule} | null>(null);
+  const [activeSelection, setActiveSelection] = useState<{ route: Route, schedule: Schedule } | null>(null);
   const [searchQuery, setSearchQuery] = useState({ origin: '', destination: '' });
-  
+
   // Auth view state
   const [authView, setAuthView] = useState<'landing' | 'register'>('landing');
   const [regEmail, setRegEmail] = useState('');
@@ -50,7 +50,7 @@ const App: React.FC = () => {
   const [adminStep, setAdminStep] = useState<1 | 2>(1);
   const [newRouteData, setNewRouteData] = useState<Omit<Route, 'id'> | null>(null);
   const [newSchedules, setNewSchedules] = useState<Omit<Schedule, 'id' | 'route_id'>[]>([]);
-  const [tempSchedule, setTempSchedule] = useState({ dep: '', arr: '', days: ['1','2','3','4','5'] as string[] });
+  const [tempSchedule, setTempSchedule] = useState({ dep: '', arr: '', days: ['1', '2', '3', '4', '5'] as string[] });
 
   // Modal for details
   const [pendingSchedule, setPendingSchedule] = useState<ExtendedSchedule | null>(null);
@@ -71,6 +71,53 @@ const App: React.FC = () => {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
+  // Auth State Listener
+  useEffect(() => {
+    const syncUser = async () => {
+      const u = await supabase.getCurrentUser();
+      setUser(u);
+    };
+
+    syncUser();
+
+    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        // Ensure profile exists
+        const { data: profile } = await supabaseClient
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!profile) {
+          // If this is the very first user, make them ADMIN
+          const { count } = await supabaseClient
+            .from('profiles')
+            .select('*', { count: 'exact', head: true });
+
+          const role = (count === 0) ? 'ADMIN' : 'USER';
+
+          const { error } = await supabaseClient.from('profiles').insert([
+            {
+              id: session.user.id,
+              email: session.user.email!,
+              role: role,
+              avatar_url: `https://picsum.photos/seed/${session.user.id}/100/100`
+            }
+          ]);
+          if (error) console.error('Error creating profile:', error);
+        }
+
+        const u = await supabase.getCurrentUser();
+        setUser(u);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
   const loadData = useCallback(async () => {
@@ -90,7 +137,7 @@ const App: React.FC = () => {
     setAds(a);
     setDonationMethods(d);
     setNews(n);
-    
+
     if (user) {
       const selection = await supabase.getActiveSelection(user.id);
       if (selection) {
@@ -148,26 +195,28 @@ const App: React.FC = () => {
   }, [ads]);
 
   const handleLogin = async (isAdmin: boolean) => {
-    const loggedUser = await supabase.login(isAdmin);
-    setUser(loggedUser);
-    loadData();
+    // For demo, we still show the buttons but they will prompt for real email if they want to 'log in'
+    // or we can just redirect to the register view.
+    setAuthView('register');
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regEmail) return;
-    const registeredUser = await supabase.register(regEmail);
-    setUser(registeredUser);
-    setAuthView('landing');
+    try {
+      await supabase.register(regEmail);
+      alert('Se ha enviado un enlace de acceso a tu correo. Por favor, revísalo para continuar.');
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
     setRegEmail('');
-    loadData();
   };
 
   const handleLogout = async () => {
     await supabase.logout();
     setUser(null);
     setActiveSelection(null);
-    setSelectedAd(null); 
+    setSelectedAd(null);
     setActiveTab('home');
     setSearchQuery({ origin: '', destination: '' });
     setAuthView('landing');
@@ -215,12 +264,12 @@ const App: React.FC = () => {
 
   const addScheduleToDraft = () => {
     if (!tempSchedule.dep || !tempSchedule.arr || tempSchedule.days.length === 0) return;
-    setNewSchedules([...newSchedules, { 
-      departure_time: tempSchedule.dep, 
-      arrival_time: tempSchedule.arr, 
-      operating_days: tempSchedule.days 
+    setNewSchedules([...newSchedules, {
+      departure_time: tempSchedule.dep,
+      arrival_time: tempSchedule.arr,
+      operating_days: tempSchedule.days
     }]);
-    setTempSchedule({ dep: '', arr: '', days: ['1','2','3','4','5'] });
+    setTempSchedule({ dep: '', arr: '', days: ['1', '2', '3', '4', '5'] });
   };
 
   const finalizeRoute = async () => {
@@ -298,9 +347,9 @@ const App: React.FC = () => {
   };
 
   const handlePresetDays = (type: 'lv' | 'fs' | 'all') => {
-    if (type === 'lv') setTempSchedule({...tempSchedule, days: ['1','2','3','4','5']});
-    if (type === 'fs') setTempSchedule({...tempSchedule, days: ['0','6']});
-    if (type === 'all') setTempSchedule({...tempSchedule, days: ['0','1','2','3','4','5','6','H']});
+    if (type === 'lv') setTempSchedule({ ...tempSchedule, days: ['1', '2', '3', '4', '5'] });
+    if (type === 'fs') setTempSchedule({ ...tempSchedule, days: ['0', '6'] });
+    if (type === 'all') setTempSchedule({ ...tempSchedule, days: ['0', '1', '2', '3', '4', '5', '6', 'H'] });
   };
 
   if (selectedAd && user) {
@@ -319,17 +368,17 @@ const App: React.FC = () => {
                 <h1 className="text-4xl font-black dark:text-white transition-colors">{selectedAd.title}</h1>
                 <p className="text-primary font-bold uppercase tracking-widest text-xs">Promoción Exclusiva PróximoBus</p>
               </div>
-              
+
               <div className="prose dark:prose-invert max-w-none text-slate-500 dark:text-slate-400 space-y-4 font-medium leading-relaxed transition-colors">
                 <p>{selectedAd.description}</p>
                 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
               </div>
 
               <div className="pt-6">
-                <a 
-                  href={selectedAd.external_url} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
+                <a
+                  href={selectedAd.external_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center justify-center gap-3 w-full sm:w-auto px-10 py-5 bg-primary text-white font-black rounded-2xl shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
                 >
                   VISITAR SITIO WEB
@@ -357,23 +406,20 @@ const App: React.FC = () => {
 
           {authView === 'landing' ? (
             <div className="space-y-4">
-              <button onClick={() => handleLogin(false)} className="w-full py-4 bg-primary text-white font-bold rounded-2xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">Acceder como Usuario Demo</button>
-              <button onClick={() => handleLogin(true)} className="w-full py-4 bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-bold rounded-2xl hover:opacity-90 transition-all">Acceder como Administrador Demo</button>
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-                <button onClick={() => setAuthView('register')} className="w-full py-4 border-2 border-primary text-primary font-black rounded-2xl hover:bg-primary/5 transition-all">Registrarse</button>
-              </div>
+              <p className="text-center text-sm text-slate-500 mb-4">Usa tu correo para acceder de forma segura mediante un enlace mágico.</p>
+              <button onClick={() => setAuthView('register')} className="w-full py-4 bg-primary text-white font-bold rounded-2xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">Iniciar Sesión / Registrarse</button>
             </div>
           ) : (
             <form onSubmit={handleRegister} className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Correo Electrónico</label>
-                <input 
-                  type="email" 
-                  value={regEmail} 
-                  onChange={(e) => setRegEmail(e.target.value)} 
-                  required 
-                  placeholder="ejemplo@email.com" 
-                  className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-primary transition-all dark:text-white font-bold transition-colors" 
+                <input
+                  type="email"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  required
+                  placeholder="ejemplo@email.com"
+                  className="w-full p-5 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-primary transition-all dark:text-white font-bold transition-colors"
                 />
               </div>
               <div className="flex flex-col gap-3">
@@ -389,7 +435,7 @@ const App: React.FC = () => {
 
   return (
     <Layout user={user} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} theme={theme} onToggleTheme={toggleTheme}>
-      
+
       {/* Modal Selection Detail */}
       {pendingSchedule && (
         <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center p-0 md:p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
@@ -448,7 +494,7 @@ const App: React.FC = () => {
       {/* HOME TAB */}
       {activeTab === 'home' && (
         <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-          
+
           {/* Active Countdown - Always at the top if present */}
           {activeSelection && (
             <div className="space-y-6 animate-in slide-in-from-top-6 duration-700">
@@ -471,9 +517,9 @@ const App: React.FC = () => {
                     <p className="text-3xl font-black text-primary tabular-nums">{activeSelection.schedule.departure_time}</p>
                   </div>
                 </div>
-                
+
                 <CountdownTimer departureTime={activeSelection.schedule.departure_time} />
-                
+
                 <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <button onClick={handleCancelSelection} className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2">
                     <span className="material-symbols-outlined">cancel</span>
@@ -499,9 +545,9 @@ const App: React.FC = () => {
                 <label className="text-xs font-black text-slate-500 uppercase tracking-wider px-1 transition-colors">Origen</label>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-primary z-10 pointer-events-none">location_on</span>
-                  <select 
-                    className="w-full pl-12 pr-10 py-5 rounded-2xl border-none bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-primary outline-none transition-all dark:text-white appearance-none cursor-pointer font-bold transition-colors" 
-                    value={searchQuery.origin} 
+                  <select
+                    className="w-full pl-12 pr-10 py-5 rounded-2xl border-none bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-primary outline-none transition-all dark:text-white appearance-none cursor-pointer font-bold transition-colors"
+                    value={searchQuery.origin}
                     onChange={(e) => setSearchQuery({ origin: e.target.value, destination: '' })}
                   >
                     <option value="">Selecciona origen</option>
@@ -519,11 +565,11 @@ const App: React.FC = () => {
                 <label className={`text-xs font-black uppercase tracking-wider px-1 transition-colors ${!searchQuery.origin ? 'text-slate-300' : 'text-slate-500'}`}>Destino</label>
                 <div className="relative">
                   <span className={`material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 z-10 pointer-events-none transition-colors ${!searchQuery.origin ? 'text-slate-300' : 'text-primary'}`}>flag</span>
-                  <select 
-                    disabled={!searchQuery.origin} 
-                    className={`w-full pl-12 pr-10 py-5 rounded-2xl border-none focus:ring-2 focus:ring-primary outline-none transition-all appearance-none font-bold transition-colors ${!searchQuery.origin ? 'bg-slate-50/50 dark:bg-slate-900/50 text-slate-300 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-800 dark:text-white cursor-pointer'}`} 
-                    value={searchQuery.destination} 
-                    onChange={(e) => setSearchQuery({...searchQuery, destination: e.target.value})}
+                  <select
+                    disabled={!searchQuery.origin}
+                    className={`w-full pl-12 pr-10 py-5 rounded-2xl border-none focus:ring-2 focus:ring-primary outline-none transition-all appearance-none font-bold transition-colors ${!searchQuery.origin ? 'bg-slate-50/50 dark:bg-slate-900/50 text-slate-300 cursor-not-allowed' : 'bg-slate-50 dark:bg-slate-800 dark:text-white cursor-pointer'}`}
+                    value={searchQuery.destination}
+                    onChange={(e) => setSearchQuery({ ...searchQuery, destination: e.target.value })}
                   >
                     <option value="">Selecciona destino</option>
                     {availableDestinations.map(dest => (<option key={dest} value={dest}>{dest}</option>))}
@@ -533,12 +579,12 @@ const App: React.FC = () => {
               </div>
             </div>
             <div className="mt-8">
-              <button 
-                onClick={() => setActiveTab('search')} 
+              <button
+                onClick={() => setActiveTab('search')}
                 disabled={!searchQuery.origin || !searchQuery.destination}
                 className="w-full bg-primary text-white font-black py-5 rounded-2xl hover:bg-primary/90 transition-all flex items-center justify-center gap-3 shadow-xl shadow-primary/20 disabled:opacity-50 disabled:shadow-none hover:scale-[1.02] active:scale-98"
               >
-                <span className="material-symbols-outlined">search</span> 
+                <span className="material-symbols-outlined">search</span>
                 BUSCAR HORARIOS DISPONIBLES
               </button>
             </div>
@@ -569,8 +615,8 @@ const App: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {activeAds.map(ad => (
-                <div 
-                  key={ad.id} 
+                <div
+                  key={ad.id}
                   onClick={() => setSelectedAd(ad)}
                   className="group bg-white dark:bg-slate-900 rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-800 shadow-lg hover:shadow-2xl transition-all cursor-pointer transition-colors"
                 >
@@ -608,7 +654,7 @@ const App: React.FC = () => {
               <div className={`h-1 flex-1 rounded-full transition-all duration-500 ${searchQuery.origin && searchQuery.destination ? 'bg-primary' : 'bg-slate-100 dark:bg-slate-800'}`}></div>
             </div>
           </div>
-          
+
           {!searchQuery.origin && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {uniqueOrigins.map(city => (
@@ -687,10 +733,10 @@ const App: React.FC = () => {
             <div className="space-y-4">
               <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest px-2 transition-colors">Canales de Colaboración</h4>
               {donationMethods.map(method => (
-                <a 
-                  key={method.id} 
-                  href={method.url} 
-                  target="_blank" 
+                <a
+                  key={method.id}
+                  href={method.url}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="group flex items-center gap-6 p-6 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 hover:border-primary/30 hover:shadow-xl transition-all transition-colors"
                 >
@@ -723,7 +769,7 @@ const App: React.FC = () => {
               <h3 className="text-2xl font-black dark:text-white transition-colors">Novedades para Usuarios</h3>
               <span className="material-symbols-outlined text-primary text-3xl">notifications</span>
             </div>
-            
+
             <form onSubmit={handleAddNews} className="space-y-4 bg-slate-50 dark:bg-slate-800/30 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 transition-colors">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1 transition-colors">Nuevo Mensaje</label>
@@ -738,7 +784,7 @@ const App: React.FC = () => {
               {news.map(n => (
                 <div key={n.id} className="flex items-center justify-between p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 transition-colors">
                   <p className="text-sm font-medium dark:text-white line-clamp-2 transition-colors">{n.message}</p>
-                  <button onClick={() => { if(confirm('¿Eliminar novedad?')) supabase.deleteNews(n.id).then(loadData); }} className="size-8 rounded-full text-slate-300 hover:text-red-500 transition-all shrink-0"><span className="material-symbols-outlined">delete</span></button>
+                  <button onClick={() => { if (confirm('¿Eliminar novedad?')) supabase.deleteNews(n.id).then(loadData); }} className="size-8 rounded-full text-slate-300 hover:text-red-500 transition-all shrink-0"><span className="material-symbols-outlined">delete</span></button>
                 </div>
               ))}
             </div>
@@ -820,18 +866,18 @@ const App: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1 transition-colors">Hora Salida</label>
-                      <input type="time" value={tempSchedule.dep} onChange={e => setTempSchedule({...tempSchedule, dep: e.target.value})} className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all transition-colors" />
+                      <input type="time" value={tempSchedule.dep} onChange={e => setTempSchedule({ ...tempSchedule, dep: e.target.value })} className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all transition-colors" />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1 transition-colors">Hora Llegada</label>
-                      <input type="time" value={tempSchedule.arr} onChange={e => setTempSchedule({...tempSchedule, arr: e.target.value})} className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all transition-colors" />
+                      <input type="time" value={tempSchedule.arr} onChange={e => setTempSchedule({ ...tempSchedule, arr: e.target.value })} className="w-full p-4 rounded-xl border-none outline-none dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-primary transition-all transition-colors" />
                     </div>
                     <div className="lg:col-span-2 flex items-center gap-2 h-[52px]">
                       <button type="button" onClick={() => handlePresetDays('lv')} className="flex-1 h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-black hover:border-primary transition-all transition-colors">LUN A VIE</button>
                       <button type="button" onClick={() => handlePresetDays('fs')} className="flex-1 h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-black hover:border-primary transition-all transition-colors">FIN DE SEM</button>
-                      <button 
-                        type="button" 
-                        onClick={addScheduleToDraft} 
+                      <button
+                        type="button"
+                        onClick={addScheduleToDraft}
                         className="flex-[2] h-full bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/10"
                       >
                         <span className="material-symbols-outlined text-xl">add_box</span>
@@ -842,7 +888,7 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="flex justify-end gap-4">
-                  <button onClick={() => {setAdminStep(1); setNewSchedules([]);}} className="px-8 py-4 font-bold text-slate-400 transition-colors">Cancelar</button>
+                  <button onClick={() => { setAdminStep(1); setNewSchedules([]); }} className="px-8 py-4 font-bold text-slate-400 transition-colors">Cancelar</button>
                   <button onClick={finalizeRoute} disabled={newSchedules.length === 0} className="px-10 py-4 bg-primary text-white font-black rounded-2xl shadow-xl shadow-primary/20 disabled:opacity-50">GUARDAR RUTA Y HORARIOS</button>
                 </div>
               </div>
@@ -851,87 +897,87 @@ const App: React.FC = () => {
 
           {/* 3. Active Inventory View */}
           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden transition-colors">
-             <div className="p-10 border-b border-slate-50 dark:border-slate-800 flex items-center justify-between transition-colors">
-                <h3 className="text-2xl font-black dark:text-white transition-colors">Inventario de Rutas</h3>
-                <span className="px-4 py-1.5 bg-primary/10 text-primary text-[10px] font-black rounded-full uppercase tracking-widest">{routes.length} Rutas Activas</span>
-             </div>
-             <div className="overflow-x-auto">
-               <table className="w-full text-left">
-                 <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-800/50 transition-colors">
-                      <th className="px-10 py-5 text-[10px] font-black uppercase tracking-widest text-slate-400">Trayecto / Recorrido</th>
-                      <th className="px-10 py-5 text-[10px] font-black uppercase tracking-widest text-slate-400">Empresa</th>
-                      <th className="px-10 py-5 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Frecuencias</th>
-                    </tr>
-                 </thead>
-                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                   {routes.map(r => {
-                     const routeSchedules = schedules.filter(s => s.route_id === r.id);
-                     const isExpanded = editingRouteId === r.id;
+            <div className="p-10 border-b border-slate-50 dark:border-slate-800 flex items-center justify-between transition-colors">
+              <h3 className="text-2xl font-black dark:text-white transition-colors">Inventario de Rutas</h3>
+              <span className="px-4 py-1.5 bg-primary/10 text-primary text-[10px] font-black rounded-full uppercase tracking-widest">{routes.length} Rutas Activas</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-800/50 transition-colors">
+                    <th className="px-10 py-5 text-[10px] font-black uppercase tracking-widest text-slate-400">Trayecto / Recorrido</th>
+                    <th className="px-10 py-5 text-[10px] font-black uppercase tracking-widest text-slate-400">Empresa</th>
+                    <th className="px-10 py-5 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Frecuencias</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                  {routes.map(r => {
+                    const routeSchedules = schedules.filter(s => s.route_id === r.id);
+                    const isExpanded = editingRouteId === r.id;
 
-                     return (
-                       <React.Fragment key={r.id}>
-                         <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors group">
-                           <td className="px-10 py-6">
-                             <p className="font-black text-lg dark:text-white transition-colors">{r.origin} → {r.destination}</p>
-                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest transition-colors">{r.route_name}</p>
-                           </td>
-                           <td className="px-10 py-6">
-                             <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md text-[10px] font-black uppercase transition-colors">{r.company}</span>
-                           </td>
-                           <td className="px-10 py-6 text-right">
-                              <div className="flex justify-end gap-2">
-                                <button 
-                                  onClick={() => setEditingRouteId(isExpanded ? null : r.id)}
-                                  className={`size-10 rounded-full flex items-center justify-center transition-all ${isExpanded ? 'bg-primary text-white' : 'text-slate-300 hover:text-primary hover:bg-primary/10'}`}
-                                >
-                                  <span className="material-symbols-outlined">schedule</span>
-                                </button>
-                                <button 
-                                  onClick={() => { if(confirm('¿Estás seguro de eliminar esta ruta y todos sus horarios?')) supabase.deleteRoute(r.id).then(loadData); }} 
-                                  className="size-10 rounded-full text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all inline-flex items-center justify-center"
-                                >
-                                  <span className="material-symbols-outlined">delete_sweep</span>
-                                </button>
+                    return (
+                      <React.Fragment key={r.id}>
+                        <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors group">
+                          <td className="px-10 py-6">
+                            <p className="font-black text-lg dark:text-white transition-colors">{r.origin} → {r.destination}</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest transition-colors">{r.route_name}</p>
+                          </td>
+                          <td className="px-10 py-6">
+                            <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md text-[10px] font-black uppercase transition-colors">{r.company}</span>
+                          </td>
+                          <td className="px-10 py-6 text-right">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => setEditingRouteId(isExpanded ? null : r.id)}
+                                className={`size-10 rounded-full flex items-center justify-center transition-all ${isExpanded ? 'bg-primary text-white' : 'text-slate-300 hover:text-primary hover:bg-primary/10'}`}
+                              >
+                                <span className="material-symbols-outlined">schedule</span>
+                              </button>
+                              <button
+                                onClick={() => { if (confirm('¿Estás seguro de eliminar esta ruta y todos sus horarios?')) supabase.deleteRoute(r.id).then(loadData); }}
+                                className="size-10 rounded-full text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all inline-flex items-center justify-center"
+                              >
+                                <span className="material-symbols-outlined">delete_sweep</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={3} className="px-10 py-8 bg-slate-50/50 dark:bg-slate-800/20 transition-colors">
+                              <div className="space-y-6">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-xs font-black uppercase text-primary tracking-widest">Gestión de Horarios para esta ruta</p>
+                                  <button
+                                    onClick={() => setEditingSchedule({ id: '', route_id: r.id, departure_time: '00:00', arrival_time: '00:00', operating_days: ['1', '2', '3', '4', '5'] })}
+                                    className="px-4 py-2 bg-primary/10 text-primary text-[10px] font-black rounded-lg hover:bg-primary hover:text-white transition-all flex items-center gap-2"
+                                  >
+                                    <span className="material-symbols-outlined text-sm">add</span> AÑADIR NUEVA FRECUENCIA
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {routeSchedules.map(s => (
+                                    <div key={s.id} className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between group transition-colors">
+                                      <div className="flex items-center gap-6">
+                                        <div className="text-2xl font-black text-primary tabular-nums">{s.departure_time}</div>
+                                      </div>
+                                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => setEditingSchedule(s)} className="p-2 text-slate-400 hover:text-primary transition-colors"><span className="material-symbols-outlined text-sm">edit</span></button>
+                                        <button onClick={() => handleDeleteScheduleAdmin(s.id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors"><span className="material-symbols-outlined text-sm">delete</span></button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                           </td>
-                         </tr>
-                         {isExpanded && (
-                           <tr>
-                             <td colSpan={3} className="px-10 py-8 bg-slate-50/50 dark:bg-slate-800/20 transition-colors">
-                               <div className="space-y-6">
-                                 <div className="flex items-center justify-between">
-                                   <p className="text-xs font-black uppercase text-primary tracking-widest">Gestión de Horarios para esta ruta</p>
-                                   <button 
-                                     onClick={() => setEditingSchedule({ id: '', route_id: r.id, departure_time: '00:00', arrival_time: '00:00', operating_days: ['1','2','3','4','5'] })}
-                                     className="px-4 py-2 bg-primary/10 text-primary text-[10px] font-black rounded-lg hover:bg-primary hover:text-white transition-all flex items-center gap-2"
-                                   >
-                                     <span className="material-symbols-outlined text-sm">add</span> AÑADIR NUEVA FRECUENCIA
-                                   </button>
-                                 </div>
-                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                   {routeSchedules.map(s => (
-                                     <div key={s.id} className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between group transition-colors">
-                                       <div className="flex items-center gap-6">
-                                         <div className="text-2xl font-black text-primary tabular-nums">{s.departure_time}</div>
-                                       </div>
-                                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                         <button onClick={() => setEditingSchedule(s)} className="p-2 text-slate-400 hover:text-primary transition-colors"><span className="material-symbols-outlined text-sm">edit</span></button>
-                                         <button onClick={() => handleDeleteScheduleAdmin(s.id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors"><span className="material-symbols-outlined text-sm">delete</span></button>
-                                       </div>
-                                     </div>
-                                   ))}
-                                 </div>
-                               </div>
-                             </td>
-                           </tr>
-                         )}
-                       </React.Fragment>
-                     );
-                   })}
-                 </tbody>
-               </table>
-             </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* 4. Payment Methods Admin */}
@@ -940,7 +986,7 @@ const App: React.FC = () => {
               <h3 className="text-2xl font-black dark:text-white transition-colors">Gestión de Métodos de Pago</h3>
               <span className="material-symbols-outlined text-primary text-3xl">payments</span>
             </div>
-            
+
             <form onSubmit={handleAddPaymentMethodAdmin} className="space-y-4 bg-slate-50 dark:bg-slate-800/30 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 transition-colors">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1 transition-colors">Nuevo Método de Pago</label>
@@ -955,7 +1001,7 @@ const App: React.FC = () => {
               {paymentMethods.map(pm => (
                 <div key={pm.id} className="flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 transition-colors">
                   <span className="text-sm font-bold dark:text-white transition-colors">{pm.name}</span>
-                  <button onClick={() => { if(confirm('¿Eliminar método?')) supabase.deletePaymentMethod(pm.id).then(loadData); }} className="size-6 rounded-full text-slate-300 hover:text-red-500 transition-all transition-colors"><span className="material-symbols-outlined text-sm">close</span></button>
+                  <button onClick={() => { if (confirm('¿Eliminar método?')) supabase.deletePaymentMethod(pm.id).then(loadData); }} className="size-6 rounded-full text-slate-300 hover:text-red-500 transition-all transition-colors"><span className="material-symbols-outlined text-sm">close</span></button>
                 </div>
               ))}
             </div>
@@ -967,7 +1013,7 @@ const App: React.FC = () => {
               <h3 className="text-2xl font-black dark:text-white transition-colors">Gestión de Publicidad</h3>
               <span className="material-symbols-outlined text-primary text-3xl">campaign</span>
             </div>
-            
+
             <form onSubmit={handleAddAd} className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 dark:bg-slate-800/30 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 transition-colors">
               <div className="md:col-span-2 space-y-2">
                 <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1 transition-colors">Título de la Campaña</label>
@@ -1010,12 +1056,12 @@ const App: React.FC = () => {
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-primary tracking-widest px-1 transition-colors">Hora Salida</label>
-                <input type="time" value={editingSchedule.departure_time} onChange={e => setEditingSchedule({...editingSchedule, departure_time: e.target.value})} className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 dark:text-white border-none focus:ring-2 focus:ring-primary transition-all transition-colors" />
+                <input type="time" value={editingSchedule.departure_time} onChange={e => setEditingSchedule({ ...editingSchedule, departure_time: e.target.value })} className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800 dark:text-white border-none focus:ring-2 focus:ring-primary transition-all transition-colors" />
               </div>
             </div>
             <div className="flex gap-4">
               <button onClick={() => setEditingSchedule(null)} className="flex-1 py-4 font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-all transition-colors">Cancelar</button>
-              <button 
+              <button
                 onClick={() => {
                   if (editingSchedule.id) {
                     handleUpdateSchedule(editingSchedule.id, editingSchedule);
@@ -1023,7 +1069,7 @@ const App: React.FC = () => {
                     supabase.addSchedule(editingSchedule).then(loadData);
                     setEditingSchedule(null);
                   }
-                }} 
+                }}
                 className="flex-[2] py-4 bg-primary text-white font-bold rounded-2xl shadow-xl shadow-primary/20 hover:scale-105 transition-all"
               >
                 {editingSchedule.id ? 'GUARDAR CAMBIOS' : 'CREAR FRECUENCIA'}

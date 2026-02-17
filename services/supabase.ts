@@ -1,163 +1,274 @@
 
+import { createClient } from '@supabase/supabase-js';
 import { Route, Schedule, Announcement, ActiveSelection, User, Company, PaymentMethod, Ad, DonationMethod, NewsItem, UserRole } from '../types';
-import { INITIAL_ROUTES, INITIAL_ANNOUNCEMENTS, MOCK_USER, MOCK_ADMIN, INITIAL_ADS, INITIAL_DONATION_METHODS, INITIAL_NEWS } from '../constants';
 
-class MockSupabase {
-  private routes: Route[] = [];
-  private schedules: Schedule[] = [];
-  private ads: Ad[] = [...INITIAL_ADS];
-  private news: NewsItem[] = [...INITIAL_NEWS];
-  private donationMethods: DonationMethod[] = [...INITIAL_DONATION_METHODS];
-  private announcements: Announcement[] = [...INITIAL_ANNOUNCEMENTS];
-  private companies: Company[] = [
-    { id: 'c1', name: 'ALSA Interurbanos' },
-    { id: 'c2', name: 'Interbus' },
-    { id: 'c3', name: 'Viaconti' },
-    { id: 'c4', name: 'BusMadrid' }
-  ];
-  private paymentMethods: PaymentMethod[] = [
-    { id: 'p1', name: 'Efectivo' },
-    { id: 'p2', name: 'Tarjeta' },
-    { id: 'p3', name: 'Abono' },
-    { id: 'p4', name: 'App Móvil' }
-  ];
-  private selections: ActiveSelection[] = [];
-  private currentUser: User | null = null;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  constructor() {
-    INITIAL_ROUTES.forEach(ir => {
-      const { departure_time, arrival_time, operating_days, platform, ...routeData } = ir as any;
-      const routeId = routeData.id;
-      this.routes.push(routeData as Route);
-      this.schedules.push({
-        id: Math.random().toString(36).substr(2, 9),
-        route_id: routeId,
-        departure_time,
-        arrival_time,
-        operating_days,
-        platform
-      });
-    });
+export const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
+class SupabaseService {
+  async getRoutes(): Promise<Route[]> {
+    const { data, error } = await supabaseClient
+      .from('routes')
+      .select('*');
+    if (error) throw error;
+    return data || [];
   }
 
-  async getRoutes() { return this.routes; }
-  async getSchedules() { return this.schedules; }
-  async getAds() { return this.ads; }
-  async getNews() { return this.news; }
-  async getDonationMethods() { return this.donationMethods; }
+  async getSchedules(): Promise<Schedule[]> {
+    const { data, error } = await supabaseClient
+      .from('schedules')
+      .select('*');
+    if (error) throw error;
+    return data || [];
+  }
+
+  async getAds(): Promise<Ad[]> {
+    const { data, error } = await supabaseClient
+      .from('ads')
+      .select('*')
+      .eq('active', true);
+    if (error) throw error;
+    return data || [];
+  }
+
+  async getNews(): Promise<NewsItem[]> {
+    const { data, error } = await supabaseClient
+      .from('news')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
+
+  async getDonationMethods(): Promise<DonationMethod[]> {
+    const { data, error } = await supabaseClient
+      .from('donation_methods')
+      .select('*');
+    if (error) throw error;
+    return data || [];
+  }
 
   async addRoute(route: Omit<Route, 'id'>) {
-    const newRoute = { ...route, id: Math.random().toString(36).substr(2, 9) };
-    this.routes.push(newRoute as Route);
-    return newRoute;
+    const { data, error } = await supabaseClient
+      .from('routes')
+      .insert([route])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   async addSchedule(schedule: Omit<Schedule, 'id'>) {
-    const newSchedule = { ...schedule, id: Math.random().toString(36).substr(2, 9) };
-    this.schedules.push(newSchedule as Schedule);
-    return newSchedule;
+    const { data, error } = await supabaseClient
+      .from('schedules')
+      .insert([schedule])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   async updateSchedule(id: string, data: Partial<Schedule>) {
-    const index = this.schedules.findIndex(s => s.id === id);
-    if (index !== -1) {
-      this.schedules[index] = { ...this.schedules[index], ...data };
-    }
+    const { error } = await supabaseClient
+      .from('schedules')
+      .update(data)
+      .eq('id', id);
+    if (error) throw error;
   }
 
   async deleteSchedule(id: string) {
-    this.schedules = this.schedules.filter(s => s.id !== id);
+    const { error } = await supabaseClient
+      .from('schedules')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   }
 
   async addAd(ad: Omit<Ad, 'id'>) {
-    const newAd = { ...ad, id: Math.random().toString(36).substr(2, 9) };
-    this.ads.push(newAd as Ad);
-    return newAd;
+    const { data, error } = await supabaseClient
+      .from('ads')
+      .insert([ad])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   async deleteAd(id: string) {
-    this.ads = this.ads.filter(a => a.id !== id);
+    const { error } = await supabaseClient
+      .from('ads')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   }
 
   async addNews(message: string) {
-    const newNews = { id: Math.random().toString(36).substr(2, 9), message, created_at: new Date().toISOString() };
-    this.news.unshift(newNews);
-    return newNews;
+    const { data, error } = await supabaseClient
+      .from('news')
+      .insert([{ message }])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   async deleteNews(id: string) {
-    this.news = this.news.filter(n => n.id !== id);
+    const { error } = await supabaseClient
+      .from('news')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   }
 
   async addDonationMethod(method: Omit<DonationMethod, 'id'>) {
-    const newDM = { ...method, id: Math.random().toString(36).substr(2, 9) };
-    this.donationMethods.push(newDM);
-    return newDM;
+    const { data, error } = await supabaseClient
+      .from('donation_methods')
+      .insert([method])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   async deleteDonationMethod(id: string) {
-    this.donationMethods = this.donationMethods.filter(d => d.id !== id);
+    const { error } = await supabaseClient
+      .from('donation_methods')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   }
 
   async deleteRoute(id: string) {
-    this.routes = this.routes.filter(r => r.id !== id);
-    this.schedules = this.schedules.filter(s => s.route_id !== id);
+    const { error } = await supabaseClient
+      .from('routes')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   }
 
-  async getAnnouncements() { return this.announcements; }
-  async getCompanies() { return this.companies; }
+  async getCompanies(): Promise<Company[]> {
+    const { data, error } = await supabaseClient
+      .from('companies')
+      .select('*');
+    if (error) throw error;
+    return data || [];
+  }
+
   async addCompany(name: string) {
-    const newCompany = { id: Math.random().toString(36).substr(2, 5), name };
-    this.companies.push(newCompany);
-    return newCompany;
+    const { data, error } = await supabaseClient
+      .from('companies')
+      .insert([{ name }])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 
-  async getPaymentMethods() { return this.paymentMethods; }
+  async getPaymentMethods(): Promise<PaymentMethod[]> {
+    const { data, error } = await supabaseClient
+      .from('payment_methods')
+      .select('*');
+    if (error) throw error;
+    return data || [];
+  }
+
   async addPaymentMethod(name: string) {
-    const newPM = { id: Math.random().toString(36).substr(2, 5), name };
-    this.paymentMethods.push(newPM);
-    return newPM;
+    const { data, error } = await supabaseClient
+      .from('payment_methods')
+      .insert([{ name }])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   async deletePaymentMethod(id: string) {
-    this.paymentMethods = this.paymentMethods.filter(pm => pm.id !== id);
+    const { error } = await supabaseClient
+      .from('payment_methods')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   }
 
-  async setActiveSelection(userId: string, routeId: string, scheduleId: string) {
-    const existing = this.selections.findIndex(s => s.userId === userId);
-    const data = { userId, routeId, scheduleId, selectedAt: new Date().toISOString() };
-    if (existing >= 0) {
-      this.selections[existing] = data;
-    } else {
-      this.selections.push(data);
+  async setActiveSelection(user_id: string, route_id: string, schedule_id: string) {
+    const { error } = await supabaseClient
+      .from('active_selections')
+      .upsert({ user_id, route_id, schedule_id, selected_at: new Date().toISOString() });
+    if (error) throw error;
+  }
+
+  async getActiveSelection(user_id: string): Promise<ActiveSelection | null> {
+    const { data, error } = await supabaseClient
+      .from('active_selections')
+      .select('*')
+      .eq('user_id', user_id)
+      .single();
+    if (error && error.code !== 'PGRST116') throw error;
+
+    if (data) {
+      return {
+        userId: data.user_id,
+        routeId: data.route_id,
+        scheduleId: data.schedule_id,
+        selectedAt: data.selected_at
+      };
     }
+    return null;
   }
 
-  async getActiveSelection(userId: string) {
-    return this.selections.find(s => s.userId === userId) || null;
+  async clearSelection(user_id: string) {
+    const { error } = await supabaseClient
+      .from('active_selections')
+      .delete()
+      .eq('user_id', user_id);
+    if (error) throw error;
   }
 
-  async clearSelection(userId: string) {
-    this.selections = this.selections.filter(s => s.userId !== userId);
+  // --- Auth Methods ---
+
+  async getCurrentUser(): Promise<User | null> {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) return null;
+
+    const { data: profile } = await supabaseClient
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (profile) {
+      return {
+        id: user.id,
+        email: user.email!,
+        role: profile.role,
+        avatar_url: profile.avatar_url
+      };
+    }
+    return null;
   }
 
   async login(isAdmin: boolean) {
-    this.currentUser = isAdmin ? MOCK_ADMIN : MOCK_USER;
-    return this.currentUser;
+    // For demo purposes, we'll try to sign in with a fixed account
+    // or provide a message that real login is needed.
+    // In a real app, we'd use supabaseClient.auth.signInWithPassword(...)
+    console.warn('Real Auth requires user interaction. Use supabaseClient.auth directly.');
+    return null;
   }
 
   async register(email: string) {
-    const newUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      email,
-      role: UserRole.USER,
-      avatar_url: `https://picsum.photos/seed/${Math.random()}/100/100`
-    };
-    this.currentUser = newUser;
-    return newUser;
+    // This would typically involve sending an OTP or password registration
+    const { data, error } = await supabaseClient.auth.signInWithOtp({ email });
+    if (error) throw error;
+    alert('Check your email for the login link!');
+    return null;
   }
 
-  async logout() { this.currentUser = null; }
+  async logout() {
+    await supabaseClient.auth.signOut();
+  }
 }
 
-export const supabase = new MockSupabase();
+export const supabase = new SupabaseService();
+
