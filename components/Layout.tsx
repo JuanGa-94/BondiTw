@@ -46,6 +46,14 @@ const Layout: React.FC<LayoutProps> = ({ children, user, activeTab, setActiveTab
             <span className="font-bold text-sm">Buscar</span>
           </button>
 
+          <button 
+            onClick={() => setActiveTab('tips')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'tips' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-500 hover:bg-primary/10 hover:text-primary'}`}
+          >
+            <span className="material-symbols-outlined" style={{ fontVariationSettings: `'FILL' ${activeTab === 'tips' ? 1 : 0}` }}>favorite</span>
+            <span className="font-bold text-sm">Colaborar</span>
+          </button>
+
           {user.role === UserRole.ADMIN && (
             <button 
               onClick={() => setActiveTab('admin')}
@@ -94,7 +102,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, activeTab, setActiveTab
           >
             <span className="material-symbols-outlined">{theme === 'light' ? 'dark_mode' : 'light_mode'}</span>
           </button>
-          <button className="p-2 text-slate-400 dark:text-slate-300"><span className="material-symbols-outlined">notifications</span></button>
           <img src={user.avatar_url} className="w-8 h-8 rounded-full border border-slate-100 dark:border-slate-800" alt="Avatar" />
         </div>
       </header>
@@ -119,6 +126,13 @@ const Layout: React.FC<LayoutProps> = ({ children, user, activeTab, setActiveTab
         >
           <span className="material-symbols-outlined" style={{ fontVariationSettings: `'FILL' ${activeTab === 'search' ? 1 : 0}` }}>search</span>
           <span className="text-[10px] font-bold">Buscar</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('tips')}
+          className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'tips' ? 'text-primary' : 'text-slate-400 dark:text-slate-500'}`}
+        >
+          <span className="material-symbols-outlined" style={{ fontVariationSettings: `'FILL' ${activeTab === 'tips' ? 1 : 0}` }}>favorite</span>
+          <span className="text-[10px] font-bold">Tips</span>
         </button>
         {user.role === UserRole.ADMIN && (
           <button 

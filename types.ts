@@ -25,17 +25,48 @@ export interface Route {
   id: string;
   origin: string;
   destination: string;
-  departure_time: string; // HH:mm format
-  arrival_time: string;   // HH:mm format
   company: string;
   line: string;
   show_line: boolean;
-  route_name: string;     // Updated terminology: e.g., "Ruta 4 / Recorrido A"
-  payment_methods: string[]; // e.g., ["Efectivo", "Tarjeta", "Abono"]
-  platform?: string;
+  route_name: string;     
+  payment_methods: string[]; 
   is_special: boolean;
-  special_reason?: string; // Reason for "Servicio Especial"
+  special_reason?: string; 
   price: number;
+}
+
+export interface Schedule {
+  id: string;
+  route_id: string;
+  departure_time: string; // HH:mm
+  arrival_time: string;   // HH:mm
+  operating_days: string[]; // ['0'..'6', 'H'] 0=Sun, H=Holiday
+  platform?: string;
+}
+
+export interface Ad {
+  id: string;
+  title: string;
+  description: string;
+  image_url: string;
+  external_url: string;
+  start_date: string;
+  end_date: string;
+  active: boolean;
+}
+
+export interface DonationMethod {
+  id: string;
+  name: string;
+  url: string;
+  icon: string;
+  description: string;
+}
+
+export interface NewsItem {
+  id: string;
+  message: string;
+  created_at: string;
 }
 
 export interface Announcement {
@@ -50,5 +81,6 @@ export interface Announcement {
 export interface ActiveSelection {
   userId: string;
   routeId: string;
+  scheduleId: string;
   selectedAt: string;
 }
